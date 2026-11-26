@@ -1,0 +1,8 @@
+plugins { id 'com.android.application' version '8.7.3' }
+android {
+    namespace 'ir.nava.market'
+    compileSdk 35
+    defaultConfig { applicationId 'ir.nava.market'; minSdk 28; targetSdk 34; versionCode 1; versionName '0.1' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { implementation 'org.bouncycastle:bcprov-jdk18on:1.80' }
