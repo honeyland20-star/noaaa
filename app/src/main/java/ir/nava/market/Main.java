@@ -78,7 +78,7 @@ public class Main extends Activity {
             if(auth!=null){
                 String time=String.valueOf(System.currentTimeMillis()/1000);
                 byte[] secret=Base64.decode(auth.getString("priv"),Base64.URL_SAFE);
-                if(secret.length!=32)throw new IOException("??? ???? ????? ???? ????");
+                if(secret.length!=32)throw new IOException("طول کلید خصوصی صحیح نیست");
                 Ed25519Signer signer=new Ed25519Signer(); signer.init(true,new Ed25519PrivateKeyParameters(secret,0));
                 byte[] data=bytes(time+method+path+(body==null?"":body));signer.update(data,0,data.length);
                 h.setRequestProperty("Nobitex-Signature",Base64.encodeToString(signer.generateSignature(),Base64.NO_WRAP|Base64.URL_SAFE));
@@ -95,7 +95,7 @@ public class Main extends Activity {
     }
     JSONObject nob(String path,JSONObject body,JSONObject auth) throws Exception{
         JSONObject result=new JSONObject(request(ROOT+path,body==null?null:body.toString(),auth,path));
-        if(!"ok".equals(result.optString("status")))throw new IOException("??????? ??????? ????? ???");
+        if(!"ok".equals(result.optString("status")))throw new IOException("درخواست نوبیتکس تأیید نشد");
         return result;
     }
     JSONArray news(String symbol,String equities) throws Exception{
@@ -132,17 +132,17 @@ public class Main extends Activity {
                     case "news": result=news(sym,cfg.optString("equities",""));break;
                     case "profile": nob("/users/profile",null,cfg);result=true;break;
                     case "send":
-                        String token=cfg.optString("token");if(!token.matches("[0-9]+:[A-Za-z0-9_-]+")||!cfg.optString("chat").matches("[1-9][0-9]+"))throw new IOException("??????? ?????? ???? ???");
+                        String token=cfg.optString("token");if(!token.matches("[0-9]+:[A-Za-z0-9_-]+")||!cfg.optString("chat").matches("[1-9][0-9]+"))throw new IOException("تنظیمات تلگرام ناقص است");
                         JSONObject msg=new JSONObject().put("chat_id",cfg.getString("chat")).put("text",p.getString("text"));
                         JSONObject sent=new JSONObject(request("https://api.telegram.org/bot"+token+"/sendMessage",msg.toString(),null,null));
                         if(!sent.optBoolean("ok"))throw new IOException();result=true;break;
                     case "order":
-                        if(!visible)throw new IOException("?????? ?? ????????? ????");
+                        if(!visible)throw new IOException("برنامه در پیش‌زمینه نیست");
                         result=nob("/market/orders/add",p,cfg);break;
                     case "status": result=nob("/market/orders/status",p,cfg);break;
                     default:throw new IOException();}
                     reply.put("data",result);
-                }catch(Exception e){try{String msg=e.getMessage();reply.put("error",msg!=null&&(msg.matches("HTTP [0-9]+")||msg.matches("[\\p{IsArabic}? ]+"))?msg:"?????? ?? ?????????? ???? ?????? ???");}catch(Exception ignored){}}
+                }catch(Exception e){try{String msg=e.getMessage();reply.put("error",msg!=null&&(msg.matches("HTTP [0-9]+")||msg.matches("[\\p{IsArabic}‌ ]+"))?msg:"ارتباط یا اعتبارسنجی پاسخ ناموفق بود");}catch(Exception ignored){}}
                 String js="window.receive("+id+","+JSONObject.quote(reply.toString())+")";
                 runOnUiThread(()->{if(!isDestroyed())view.evaluateJavascript(js,null);});
             });
