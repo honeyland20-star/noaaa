@@ -1,10 +1,10 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const defaults={symbol:'BTC',side:'buy',limit:'',budget:'10',spread:'0.25',fee:'0.25',equities:'',execution:'paper',pub:'',priv:'',token:'',chat:''};
+const defaults={symbol:'BTC',frame:'60',coverage:'trend',side:'buy',limit:'',budget:'10',spread:'0.25',fee:'0.25',equities:'',execution:'paper',pub:'',priv:'',token:'',chat:''};
 const read=id=>{const data=JSON.parse(Phone.read(id));if(!data)throw Error('بازکردن اطلاعات رمزگذاری‌شده ناموفق بود');return data};
 let cfg={...defaults,...read('config')};
 let state={armed:false,pending:null,history:[],cash:1000,coins:{},...read('state')};
-let busy=false,epoch=0, seq=0,cacheTime=0,cache=[],quoteText='در انتظار بررسی';
+let busy=false,epoch=0, seq=0,quoteText='در انتظار بررسی';
 const waiting=new Map();
 function save(){if(!Phone.write('state',JSON.stringify(state))){state.armed=false;throw Error('ذخیره وضعیت ناموفق بود')}}
 function call(op,args={}){return new Promise((ok,fail)=>{const id=++seq;waiting.set(id,{ok,fail});Phone.call(id,op,JSON.stringify(args))})}
@@ -22,7 +22,7 @@ function paint(){
     $('recovery').hidden=!state.pending||!!state.pending.id;
     rows($('history'),state.history,'هنوز سفارشی ثبت نشده است');
 }
-function page(id){for(const n of ['home','settings','journal'])$(n).hidden=id!==n;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('selected',b.dataset.page===id))}
+function page(id){for(const n of ['home','research','settings','journal'])$(n).hidden=id!==n;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('selected',b.dataset.page===id))}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
 for(const k of Object.keys(defaults))$(k).value=cfg[k];
 $('form').onsubmit=e=>{e.preventDefault();if(state.pending||busy||state.armed){notice('برای تغییر تنظیمات ابتدا پایش را متوقف کن و تا پایان استعلام صبر کن');return}
@@ -30,7 +30,7 @@ $('form').onsubmit=e=>{e.preventDefault();if(state.pending||busy||state.armed){n
     if(next.execution==='live'&&(!next.pub||!next.priv)){notice('کلیدهای نوبیتکس را وارد کن');return}
     if((!!next.token!==!!next.chat)||(next.chat&&!/^[1-9][0-9]+$/.test(next.chat))){notice('توکن و شناسه عددی چت خصوصی را با هم وارد کن');return}
     if(!Phone.write('config',JSON.stringify(next))){notice('ذخیره تنظیمات ناموفق بود');return}
-    cfg=next;cacheTime=0;cache=[];$('price').textContent='—';$('seen').textContent='هنوز قیمت دریافت نشده';rows($('news'),[],'در انتظار بررسی');notice('تنظیمات ذخیره شد');paint()
+    cfg=next;researchCache.clear();renderAnalysis({minutes:Number(cfg.frame)});$('price').textContent='—';$('seen').textContent='هنوز قیمت دریافت نشده';rows($('news'),[],'در انتظار بررسی');notice('تنظیمات ذخیره شد');paint()
 };
 async function test(op){try{await call(op,op==='send'?{text:'نوا تریدر · ارتباط آزمایشی برقرار است'}:{});notice('آزمایش اتصال موفق بود')}catch(e){notice(e.message)}}
 $('profile').onclick=()=>test('profile');$('telegram').onclick=()=>test('send');
@@ -56,9 +56,17 @@ async function tick(manual=false){
     const generation=epoch;busy=true;paint();
     try{
         if(state.pending){if(state.pending.id)await reconcile(state.pending.id);else notice('رسید سفارش نامشخص است. تاریخچه نوبیتکس را بررسی کن. ارسال مجدد مسدود است');return}
-        if(Date.now()-cacheTime>300000){cache=await call('news');cacheTime=Date.now()}
-        rows($('news'),cache.slice(0,5).map(h=>h.title+' · '+h.source),'خبری دریافت نشد');
-        const book=await call('quote'),d=assess(book,cache,cfg,Date.now());
+        const strict=cfg.side==='buy'&&cfg.coverage==='all';
+        const report=await collect(strict?Object.keys(sources).filter(k=>k!=='quote'):['candles','macro','news']);
+        report.strict=strict;
+        const headlines=(report.news?.items||[]).filter(h=>Date.now()-h.published<day);
+        rows($('news'),headlines.slice(0,5).map(h=>h.title+' · '+h.source),report.news?.error||'خبری دریافت نشد');
+        const book=await call('quote'),d=assess(book,headlines,cfg,Date.now());
+        if(d.ready && cfg.side==='buy'){
+            const veto=buyFilter(report,Date.now());
+            if(veto){d.ready=false;d.reason=veto}
+            else d.reason+=' · روند '+report.candles.trend+' · RSI '+fa(report.candles.rsi);
+        }
         quoteText=d.reason;notice(d.reason+(d.headline?' · '+d.headline.title:''));
         $('price').textContent=d.price?num(d.price):'—';$('seen').textContent='آخرین بررسی · '+new Date().toLocaleTimeString('fa-IR');
         if(!state.armed||generation!==epoch||!d.ready||!Phone.active())return;
